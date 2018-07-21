@@ -53,8 +53,8 @@ for idx, file in enumerate(os.listdir('.\\' + DATA_DIR)):
         print(df['dns.qry.name'].values)
         print(str(len(df['dns.qry.name'].values)) + ' values pre-filter')
         
-        # filter to have only IPv4 queries
-        df2 = df[(df['dns.qry.type'] == 1) & (df['dns.flags.response'] == 0)]
+        # filter to have only IPv4 valid responses
+        df2 = df[(df['dns.qry.type'] == 1) & (df['dns.flags.response'] == 1) & (df['dns.flags.rcode'] == 0)]
         df2.index = range(len(df2))
         print(str(len(df2['dns.qry.name'].values)) + ' values post-filter')
         
@@ -83,26 +83,18 @@ len(transformed_weights.toarray())
 weights = np.asarray(transformed_weights.mean(axis=0)).ravel().tolist()
 weights_df = pd.DataFrame({'term': vectorizer.get_feature_names(), 'weight': weights})
 weights_df.sort_values(by='weight', ascending=False).head(20)
-processed_path = os.path.join(PROCESSED_DIR, 'users.csv')
-weights_df.to_csv(path_or_buf=processed_path)
 len(weights_df)
 
 # create tf-idf features for each user
-df_arr = []
+users_data = {}
+for feature_name in vectorizer.get_feature_names():
+    users_data[feature_name] = []
 for user_index, file in enumerate(os.listdir('.\\' + DATA_DIR)):
     print(file)
-    user_data = {}
     for feature_index, feature_name in enumerate(vectorizer.get_feature_names()):
-        user_data[feature_name] = transformed_weights[user_index, feature_index]
-    user_df = pd.DataFrame(user_data)
-    df_arr.append(user_df)
-
-len(vectorizer.get_feature_names())
-df4 = pd.DataFrame(df3['dns.qry.name'].value_counts())
-df4
+        users_data[feature_name].append(transformed_weights[user_index, feature_index])
+users_df = pd.DataFrame(data=users_data)
 processed_path = os.path.join(PROCESSED_DIR, 'users.csv')
-df4.to_csv(path_or_buf=processed_path)
+users_df.to_csv(path_or_buf=processed_path)
 
-transformer = TfidfTransformer()
-transformed_weights = transformer.fit_transform(cvec_counts)
-transformed_weights
+
