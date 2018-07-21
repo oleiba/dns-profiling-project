@@ -35,6 +35,7 @@ print(cwd)
 DIR = "C:\\Users\\Administrator\\Documents\\MyResearch\\attack-methods\\dns-profiling-project"
 DATA_DIR = 'DNS'
 DOMAIN_SUFFIXES_FILE_NAME = 'tld-desc.csv'
+PROCESSED_DIR = 'processed'
 os.chdir(DIR)
 
 with open(DOMAIN_SUFFIXES_FILE_NAME, 'r') as results:
@@ -43,7 +44,7 @@ with open(DOMAIN_SUFFIXES_FILE_NAME, 'r') as results:
 
 NUM_OF_USERS = len(os.listdir('.\\' + DATA_DIR))
 print(str(NUM_OF_USERS) + ' users')
-# for file in os.listdir('.\\' + DATA_DIR):
+# for idx, file in enumerate(os.listdir('.\\' + DATA_DIR)):
 file = 'dnsSummary_user292.pcap.csv'
 print(file)
 with open(os.path.join(DATA_DIR, file), 'r') as results:
@@ -53,10 +54,24 @@ with open(os.path.join(DATA_DIR, file), 'r') as results:
     print(str(len(df['dns.qry.name'].values)) + ' values pre-filter')
     
     # filter to have only IPv4 queries
-    dfOnlyQueries = df[(df['dns.qry.type'] == 1) & (df['dns.flags.response'] == 0)]
-    print(dfOnlyQueries['dns.qry.name'].values)
-    print(str(len(dfOnlyQueries['dns.qry.name'].values)) + ' values post-filter')
-    print(len(dfOnlyQueries['dns.qry.name'].values))
+    df2 = df[(df['dns.qry.type'] == 1) & (df['dns.flags.response'] == 0)]
+    df2.index = range(len(df2))
+    print(df2['dns.qry.name'].values)
+    print(str(len(df2['dns.qry.name'].values)) + ' values post-filter')
+    print(len(df2['dns.qry.name'].values))
     
-    # count occurrences
-    dfOnlyQueries['dns.qry.name'].value_counts()
+    # special cases
+    df3 = df2.copy()
+    df3['dns.qry.name'] = df2['dns.qry.name'].replace(value='whatsapp.net', regex='.*whatsapp.*', inplace=False)
+    print(str(len(df3['dns.qry.name'].values)) + ' post group by whatsapp')
+    print(len(df3['dns.qry.name'].values))
+    df4 = pd.DataFrame(df3['dns.qry.name'].value_counts())
+    processed_path = os.path.join(PROCESSED_DIR, 'user' + str(idx) + '.csv')
+    df4.to_csv(path_or_buf=processed_path)
+        
+        
+        
+    
+    
+
+    
