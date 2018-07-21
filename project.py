@@ -44,34 +44,65 @@ with open(DOMAIN_SUFFIXES_FILE_NAME, 'r') as results:
 
 NUM_OF_USERS = len(os.listdir('.\\' + DATA_DIR))
 print(str(NUM_OF_USERS) + ' users')
-# for idx, file in enumerate(os.listdir('.\\' + DATA_DIR)):
-file = 'dnsSummary_user292.pcap.csv'
-print(file)
-with open(os.path.join(DATA_DIR, file), 'r') as results:
-    df = pd.read_csv(results, delimiter=',')
-    df.head()
-    print(df['dns.qry.name'].values)
-    print(str(len(df['dns.qry.name'].values)) + ' values pre-filter')
-    
-    # filter to have only IPv4 queries
-    df2 = df[(df['dns.qry.type'] == 1) & (df['dns.flags.response'] == 0)]
-    df2.index = range(len(df2))
-    print(df2['dns.qry.name'].values)
-    print(str(len(df2['dns.qry.name'].values)) + ' values post-filter')
-    print(len(df2['dns.qry.name'].values))
-    
-    # special cases
-    df3 = df2.copy()
-    df3['dns.qry.name'] = df2['dns.qry.name'].replace(value='whatsapp.net', regex='.*whatsapp.*', inplace=False)
-    print(str(len(df3['dns.qry.name'].values)) + ' post group by whatsapp')
-    print(len(df3['dns.qry.name'].values))
-    df4 = pd.DataFrame(df3['dns.qry.name'].value_counts())
-    processed_path = os.path.join(PROCESSED_DIR, 'user' + str(idx) + '.csv')
-    df4.to_csv(path_or_buf=processed_path)
+corpus = []
+for idx, file in enumerate(os.listdir('.\\' + DATA_DIR)):
+    print(file)
+    with open(os.path.join(DATA_DIR, file), 'r') as results:
+        df = pd.read_csv(results, delimiter=',')
+        df.head()
+        print(df['dns.qry.name'].values)
+        print(str(len(df['dns.qry.name'].values)) + ' values pre-filter')
         
+        # filter to have only IPv4 queries
+        df2 = df[(df['dns.qry.type'] == 1) & (df['dns.flags.response'] == 0)]
+        df2.index = range(len(df2))
+        print(str(len(df2['dns.qry.name'].values)) + ' values post-filter')
         
-        
-    
-    
+        # special cases
+        df3 = df2.copy()
+        df3['dns.qry.name'] = df2['dns.qry.name'].replace(value='whatsapp.net', regex='.*whatsapp.*', inplace=False)
+        print(str(len(df3['dns.qry.name'].values)) + ' post group by whatsapp')
+        print(len(df3['dns.qry.name'].values))
+        all_names_as_text = ' '.join(df3['dns.qry.name'].values)
+        corpus.append(all_names_as_text)
 
-    
+vectorizer = CountVectorizer(token_pattern="(?u)\\b[\\w.-]+\\b")
+X = vectorizer.fit_transform(corpus)
+
+# collect summed frequencies for ALL users together
+frequencies = np.asarray(X.sum(axis=0)).ravel().tolist()
+frequencies_df = pd.DataFrame({'term': vectorizer.get_feature_names(), 'frequency': frequencies})
+frequencies_df.sort_values(by='frequency', ascending=False).head(20)
+
+print(str(len(vectorizer.get_feature_names())) + ' features (different domain names)')
+transformer = TfidfTransformer(smooth_idf=False)
+transformed_weights = transformer.fit_transform(X.toarray())
+len(transformed_weights.toarray())
+
+# collect averaged weights for ALL users together
+weights = np.asarray(transformed_weights.mean(axis=0)).ravel().tolist()
+weights_df = pd.DataFrame({'term': vectorizer.get_feature_names(), 'weight': weights})
+weights_df.sort_values(by='weight', ascending=False).head(20)
+processed_path = os.path.join(PROCESSED_DIR, 'users.csv')
+weights_df.to_csv(path_or_buf=processed_path)
+len(weights_df)
+
+# create tf-idf features for each user
+df_arr = []
+for user_index, file in enumerate(os.listdir('.\\' + DATA_DIR)):
+    print(file)
+    user_data = {}
+    for feature_index, feature_name in enumerate(vectorizer.get_feature_names()):
+        user_data[feature_name] = transformed_weights[user_index, feature_index]
+    user_df = pd.DataFrame(user_data)
+    df_arr.append(user_df)
+
+len(vectorizer.get_feature_names())
+df4 = pd.DataFrame(df3['dns.qry.name'].value_counts())
+df4
+processed_path = os.path.join(PROCESSED_DIR, 'users.csv')
+df4.to_csv(path_or_buf=processed_path)
+
+transformer = TfidfTransformer()
+transformed_weights = transformer.fit_transform(cvec_counts)
+transformed_weights
