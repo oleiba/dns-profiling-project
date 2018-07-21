@@ -44,27 +44,64 @@ with open(DOMAIN_SUFFIXES_FILE_NAME, 'r') as results:
 
 NUM_OF_USERS = len(os.listdir('.\\' + DATA_DIR))
 print(str(NUM_OF_USERS) + ' users')
-corpus = []
+
+# input: start index of DataFrame
+# output: end index of 30 minutes segment, exclusive. Nan if that's the last segment
+def find_segment_end(dataframe, start_index):
+    start_time = dataframe[dataframe['frame.number'] == start_index]['frame.time_relative'].iloc[0]
+    # print('start_time = ' + str(start_time))
+    end_time = start_time + 60 * 30     # 60 seconds * 30 minutes
+    # print('end_time = ' + str(end_time))
+    minimums = dataframe[dataframe['frame.time_relative'] >= end_time].min(axis=0)
+    actual_end_time = minimums['frame.time_relative']
+    # print('actual_end_time = ' + str(actual_end_time))
+    end_index = minimums['frame.number']
+    # print('end_index = ', str(end_index))
+    # print('actual_end_time - start_time = ', (actual_end_time - start_time))
+    return end_index
+    
+all_users_segments = [] # array of all users dataframes with all segments of each (sum of (user * segments_per_user))
+corpus = [] # array of strings:  each string is a space separated array of domain names
+users_num_of_segments = [] # array of integers: each element is the number of segments per user
 for idx, file in enumerate(os.listdir('.\\' + DATA_DIR)):
+    user_segments = [] # array of all segments of a single user. Each segment is of half an hour
     print(file)
     with open(os.path.join(DATA_DIR, file), 'r') as results:
         df = pd.read_csv(results, delimiter=',')
-        df.head()
-        print(df['dns.qry.name'].values)
         print(str(len(df['dns.qry.name'].values)) + ' values pre-filter')
-        
+    
         # filter to have only IPv4 valid responses
         df2 = df[(df['dns.qry.type'] == 1) & (df['dns.flags.response'] == 1) & (df['dns.flags.rcode'] == 0)]
         df2.index = range(len(df2))
         print(str(len(df2['dns.qry.name'].values)) + ' values post-filter')
         
-        # special cases
+        # special cases 
         df3 = df2.copy()
         df3['dns.qry.name'] = df2['dns.qry.name'].replace(value='whatsapp.net', regex='.*whatsapp.*', inplace=False)
         print(str(len(df3['dns.qry.name'].values)) + ' post group by whatsapp')
-        print(len(df3['dns.qry.name'].values))
+        print(len(df3['dns.qry.name'].values))        
+    
+        # slice into segments        
+        start_index = df3.min(axis=0)['frame.number']
+        end_index = find_segment_end(df3, start_index)
+        max_index = df3.max(axis=0)['frame.number']
+        count = 0
+        while not math.isnan(end_index):
+            # print('#'  + str(count))
+            count += 1
+            df4 = df3[(df3['frame.number'] >= start_index) & (df3['frame.number'] < end_index)]
+            all_users_segments.append(df4)
+            all_names_as_text = ' '.join(df3['dns.qry.name'].values)
+            corpus.append(all_names_as_text)
+            start_index = end_index
+            end_index = find_segment_end(df3, start_index)
+        # last segment
+        df4 = df3[(df3['frame.number'] >= start_index) & (df3['frame.number'] <= max_index)]
+        all_users_segments.append(df4)
         all_names_as_text = ' '.join(df3['dns.qry.name'].values)
         corpus.append(all_names_as_text)
+        users_num_of_segments.append(count + 1)
+        print('user #' + str(idx) + ': ' + str(count + 1) + ' records')
 
 vectorizer = CountVectorizer(token_pattern="(?u)\\b[\\w.-]+\\b")
 X = vectorizer.fit_transform(corpus)
