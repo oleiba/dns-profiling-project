@@ -29,6 +29,7 @@ from sklearn.feature_extraction.text import TfidfTransformer
 import seaborn as sns # for heatmaps
 import os, os.path
 import math
+import time
 cwd = os.getcwd()
 print(cwd)
 
@@ -79,13 +80,14 @@ for idx, file in enumerate(os.listdir('.\\' + DATA_DIR)):
         df3 = df2.copy()
         df3['dns.qry.name'] = df2['dns.qry.name'].replace(value='whatsapp.net', regex='.*whatsapp.*', inplace=False)
         print(str(len(df3['dns.qry.name'].values)) + ' post group by whatsapp')
-        print(len(df3['dns.qry.name'].values))        
+        print(len(df3['dns.qry.name'].values))
     
-        # slice into segments        
+        # slice into segments
         start_index = df3.min(axis=0)['frame.number']
         end_index = find_segment_end(df3, start_index)
         max_index = df3.max(axis=0)['frame.number']
         count = 0
+        start_time = time.time()
         while not math.isnan(end_index):
             # print('#'  + str(count))
             count += 1
@@ -95,7 +97,10 @@ for idx, file in enumerate(os.listdir('.\\' + DATA_DIR)):
             corpus.append(all_names_as_text)
             start_index = end_index
             end_index = find_segment_end(df3, start_index)
+            end_time = time.time()
         # last segment
+        end_time = time.time()
+        print('loop took ' + str(end_time - start_time) + ' ms')
         df4 = df3[(df3['frame.number'] >= start_index) & (df3['frame.number'] <= max_index)]
         all_users_segments.append(df4)
         all_names_as_text = ' '.join(df3['dns.qry.name'].values)
@@ -103,6 +108,7 @@ for idx, file in enumerate(os.listdir('.\\' + DATA_DIR)):
         users_num_of_segments.append(count + 1)
         print('user #' + str(idx) + ': ' + str(count + 1) + ' records')
 
+# Count occurrences (array of frequencies)
 vectorizer = CountVectorizer(token_pattern="(?u)\\b[\\w.-]+\\b")
 X = vectorizer.fit_transform(corpus)
 
@@ -111,10 +117,10 @@ frequencies = np.asarray(X.sum(axis=0)).ravel().tolist()
 frequencies_df = pd.DataFrame({'term': vectorizer.get_feature_names(), 'frequency': frequencies})
 frequencies_df.sort_values(by='frequency', ascending=False).head(20)
 
+# TF-IDF transformer
 print(str(len(vectorizer.get_feature_names())) + ' features (different domain names)')
 transformer = TfidfTransformer(smooth_idf=False)
 transformed_weights = transformer.fit_transform(X.toarray())
-len(transformed_weights.toarray())
 
 # collect averaged weights for ALL users together
 weights = np.asarray(transformed_weights.mean(axis=0)).ravel().tolist()
@@ -122,7 +128,7 @@ weights_df = pd.DataFrame({'term': vectorizer.get_feature_names(), 'weight': wei
 weights_df.sort_values(by='weight', ascending=False).head(20)
 len(weights_df)
 
-# create tf-idf features for each user
+# create TD-IDF features for each user
 users_data = {}
 for feature_name in vectorizer.get_feature_names():
     users_data[feature_name] = []
