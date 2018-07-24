@@ -26,6 +26,13 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.feature_extraction import DictVectorizer
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.feature_extraction.text import TfidfTransformer
+from sklearn.feature_selection import SelectFromModel
+from sklearn.linear_model import RidgeClassifier
+from sklearn.pipeline import Pipeline
+from sklearn.linear_model import SGDClassifier
+from sklearn.linear_model import Perceptron
+from sklearn.linear_model import PassiveAggressiveClassifier
+from sklearn.neighbors import NearestCentroid
 import seaborn as sns # for heatmaps
 import os, os.path
 import math
@@ -115,6 +122,13 @@ for idx, file in enumerate(os.listdir(DATA_DIR)):
         users_num_of_segments.append(count + 1)
         print('user #' + str(idx) + ': ' + str(count + 1) + ' records')
 
+# For each user: Need to split corpus to X_train and X_test and create Y_train and Y_test
+# Y_train and Y_test should be easy to create- set 1 for a segment of the user, set -1 otherwise
+# Train should contain samples of both the user and not of the user, better if balanced
+# Then, we should fit_transform on X_train only, and not on all corpus
+# See example in:
+# http://scikit-learn.org/stable/auto_examples/text/document_classification_20newsgroups.html#sphx-glr-auto-examples-text-document-classification-20newsgroups-py
+
 # Count occurrences (array of frequencies)
 vectorizer = CountVectorizer(token_pattern="(?u)\\b[\\w.-]+\\b")
 X = vectorizer.fit_transform(corpus)
@@ -128,6 +142,117 @@ frequencies_df.sort_values(by='frequency', ascending=False).head(20)
 print(str(len(vectorizer.get_feature_names())) + ' features (different domain names)')
 transformer = TfidfTransformer(smooth_idf=False)
 transformed_weights = transformer.fit_transform(X.toarray())
+
+
+# #############################################################################
+# Benchmark classifiers
+def benchmark(clf):
+    print('_' * 80)
+    print("Training: ")
+    print(clf)
+    t0 = time()
+    clf.fit(X_train, y_train)
+    train_time = time() - t0
+    print("train time: %0.3fs" % train_time)
+
+    t0 = time()
+    pred = clf.predict(X_test)
+    test_time = time() - t0
+    print("test time:  %0.3fs" % test_time)
+
+    score = metrics.accuracy_score(y_test, pred)
+    print("accuracy:   %0.3f" % score)
+
+    #print("classification report:")
+    #print(metrics.classification_report(y_test, pred,
+    #                                    target_names=target_names))
+
+    #print("confusion matrix:")
+    #print(metrics.confusion_matrix(y_test, pred))
+
+    print()
+    clf_descr = str(clf).split('(')[0]
+    return clf_descr, score, train_time, test_time
+
+
+results = []
+for clf, name in (
+        (RidgeClassifier(tol=1e-2, solver="lsqr"), "Ridge Classifier"),
+        (Perceptron(n_iter=50), "Perceptron"),
+        (PassiveAggressiveClassifier(n_iter=50), "Passive-Aggressive"),
+        (KNeighborsClassifier(n_neighbors=10), "kNN"),
+        (RandomForestClassifier(n_estimators=100), "Random forest")):
+    print('=' * 80)
+    print(name)
+    results.append(benchmark(clf))
+
+for penalty in ["l2", "l1"]:
+    print('=' * 80)
+    print("%s penalty" % penalty.upper())
+    # Train Liblinear model
+    results.append(benchmark(LinearSVC(penalty=penalty, dual=False,
+                                       tol=1e-3)))
+
+    # Train SGD model
+    results.append(benchmark(SGDClassifier(alpha=.0001, n_iter=50,
+                                           penalty=penalty)))
+
+# Train SGD with Elastic Net penalty
+print('=' * 80)
+print("Elastic-Net penalty")
+results.append(benchmark(SGDClassifier(alpha=.0001, n_iter=50,
+                                       penalty="elasticnet")))
+
+# Train NearestCentroid without threshold
+print('=' * 80)
+print("NearestCentroid (aka Rocchio classifier)")
+results.append(benchmark(NearestCentroid()))
+
+# Train sparse Naive Bayes classifiers
+print('=' * 80)
+print("Naive Bayes")
+results.append(benchmark(MultinomialNB(alpha=.01)))
+results.append(benchmark(BernoulliNB(alpha=.01)))
+
+print('=' * 80)
+print("LinearSVC with L1-based feature selection")
+# The smaller C, the stronger the regularization.
+# The more regularization, the more sparsity.
+results.append(benchmark(Pipeline([
+  ('feature_selection', SelectFromModel(LinearSVC(penalty="l1", dual=False,
+                                                  tol=1e-3))),
+  ('classification', LinearSVC(penalty="l2"))])))
+
+# make some plots
+
+indices = np.arange(len(results))
+
+results = [[x[i] for x in results] for i in range(4)]
+
+clf_names, score, training_time, test_time = results
+training_time = np.array(training_time) / np.max(training_time)
+test_time = np.array(test_time) / np.max(test_time)
+
+plt.figure(figsize=(12, 8))
+plt.title("Score")
+plt.barh(indices, score, .2, label="score", color='navy')
+plt.barh(indices + .3, training_time, .2, label="training time",
+         color='c')
+plt.barh(indices + .6, test_time, .2, label="test time", color='darkorange')
+plt.yticks(())
+plt.legend(loc='best')
+plt.subplots_adjust(left=.25)
+plt.subplots_adjust(top=.95)
+plt.subplots_adjust(bottom=.05)
+
+for i, c in zip(indices, clf_names):
+    plt.text(-.3, i, c)
+
+plt.show()
+#############################################################################
+
+
+################## Why do we need this??
 
 # collect averaged weights for ALL users together
 weights = np.asarray(transformed_weights.mean(axis=0)).ravel().tolist()
