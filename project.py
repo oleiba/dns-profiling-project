@@ -80,6 +80,8 @@ for idx, file in enumerate(os.listdir(DATA_DIR)):
     
         # filter to have only IPv4 valid responses
         df2 = df[(df['dns.qry.type'] == 1) & (df['dns.flags.response'] == 1) & (df['dns.flags.rcode'] == 0)]
+        # we take only the fields we need
+        df2 = df2[['frame.number', 'frame.time_relative', 'dns.qry.name']]
         df2.index = range(len(df2))
         print(str(len(df2['dns.qry.name'].values)) + ' values post-filter')
         
@@ -99,7 +101,8 @@ for idx, file in enumerate(os.listdir(DATA_DIR)):
             # print('#'  + str(count))
             count += 1
             df4 = df3[(df3['frame.number'] >= start_index) & (df3['frame.number'] < end_index)]
-            #all_users_segments.append(df4) #this shit eats memory
+            #print(df4)
+            all_users_segments.append(df4)
             corpus.append(' '.join(df4['dns.qry.name'].values))
             start_index = end_index
             end_index = find_segment_end(df3, start_index)
@@ -107,8 +110,8 @@ for idx, file in enumerate(os.listdir(DATA_DIR)):
         end_time = time.time()
         print('loop took ' + str(end_time - start_time) + ' ms')
         df4 = df3[(df3['frame.number'] >= start_index) & (df3['frame.number'] <= max_index)]
-        #all_users_segments.append(df4)
-        corpus.append(' '.join(df3['dns.qry.name'].values))
+        all_users_segments.append(df4)
+        corpus.append(' '.join(df4['dns.qry.name'].values))
         users_num_of_segments.append(count + 1)
         print('user #' + str(idx) + ': ' + str(count + 1) + ' records')
 
