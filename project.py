@@ -33,7 +33,8 @@ import time
 cwd = os.getcwd()
 print(cwd)
 
-DIR = "C:\\Users\\Administrator\\Documents\\MyResearch\\attack-methods\\dns-profiling-project"
+# DIR = "C:\\Users\\Administrator\\Documents\\MyResearch\\attack-methods\\dns-profiling-project"
+DIR = "/home/yaniv/src/dns-profiling-project"
 DATA_DIR = 'DNS'
 DOMAIN_SUFFIXES_FILE_NAME = 'tld-desc.csv'
 PROCESSED_DIR = 'processed'
@@ -43,7 +44,8 @@ with open(DOMAIN_SUFFIXES_FILE_NAME, 'r') as results:
     domainSuffixesReader = csv.reader(results, delimiter=',')
     domainSuffixes = list(domainSuffixesReader)
 
-NUM_OF_USERS = len(os.listdir('.\\' + DATA_DIR))
+# NUM_OF_USERS = len(os.listdir('.\\' + DATA_DIR))
+NUM_OF_USERS = len(os.listdir(DATA_DIR))
 print(str(NUM_OF_USERS) + ' users')
 
 # input: start index of DataFrame
@@ -53,7 +55,11 @@ def find_segment_end(dataframe, start_index):
     # print('start_time = ' + str(start_time))
     end_time = start_time + 60 * 30     # 60 seconds * 30 minutes
     # print('end_time = ' + str(end_time))
-    minimums = dataframe[dataframe['frame.time_relative'] >= end_time].min(axis=0)
+    data = dataframe[dataframe['frame.time_relative'] >= end_time]
+    if data.empty:
+        return np.nan
+    minimums = data.iloc[0]
+    #minimums = dataframe[dataframe['frame.time_relative'] >= end_time].min(axis=0)
     actual_end_time = minimums['frame.time_relative']
     # print('actual_end_time = ' + str(actual_end_time))
     end_index = minimums['frame.number']
@@ -64,7 +70,8 @@ def find_segment_end(dataframe, start_index):
 all_users_segments = [] # array of all users dataframes with all segments of each (sum of (user * segments_per_user))
 corpus = [] # array of strings:  each string is a space separated array of domain names
 users_num_of_segments = [] # array of integers: each element is the number of segments per user
-for idx, file in enumerate(os.listdir('.\\' + DATA_DIR)):
+# for idx, file in enumerate(os.listdir('.\\' + DATA_DIR)):
+for idx, file in enumerate(os.listdir(DATA_DIR)):
     user_segments = [] # array of all segments of a single user. Each segment is of half an hour
     print(file)
     with open(os.path.join(DATA_DIR, file), 'r') as results:
@@ -92,19 +99,16 @@ for idx, file in enumerate(os.listdir('.\\' + DATA_DIR)):
             # print('#'  + str(count))
             count += 1
             df4 = df3[(df3['frame.number'] >= start_index) & (df3['frame.number'] < end_index)]
-            all_users_segments.append(df4)
-            all_names_as_text = ' '.join(df3['dns.qry.name'].values)
-            corpus.append(all_names_as_text)
+            #all_users_segments.append(df4) #this shit eats memory
+            corpus.append(' '.join(df4['dns.qry.name'].values))
             start_index = end_index
             end_index = find_segment_end(df3, start_index)
-            end_time = time.time()
         # last segment
         end_time = time.time()
         print('loop took ' + str(end_time - start_time) + ' ms')
         df4 = df3[(df3['frame.number'] >= start_index) & (df3['frame.number'] <= max_index)]
-        all_users_segments.append(df4)
-        all_names_as_text = ' '.join(df3['dns.qry.name'].values)
-        corpus.append(all_names_as_text)
+        #all_users_segments.append(df4)
+        corpus.append(' '.join(df3['dns.qry.name'].values))
         users_num_of_segments.append(count + 1)
         print('user #' + str(idx) + ': ' + str(count + 1) + ' records')
 
@@ -132,7 +136,8 @@ len(weights_df)
 users_data = {}
 for feature_name in vectorizer.get_feature_names():
     users_data[feature_name] = []
-for user_index, file in enumerate(os.listdir('.\\' + DATA_DIR)):
+# for user_index, file in enumerate(os.listdir('.\\' + DATA_DIR)):
+for user_index, file in enumerate(os.listdir(DATA_DIR)):
     print(file)
     for feature_index, feature_name in enumerate(vectorizer.get_feature_names()):
         users_data[feature_name].append(transformed_weights[user_index, feature_index])
