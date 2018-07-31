@@ -2,7 +2,7 @@
 """
 Created on Sat Jul 21 11:25:25 2018
 
-@author: Administrator
+@author: Yaniv Agman and Oded Leiba
 """
 
 from __future__ import division
@@ -26,19 +26,12 @@ from sklearn.svm import LinearSVC
 from sklearn.naive_bayes import GaussianNB
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.naive_bayes import BernoulliNB
-from sklearn.linear_model import LogisticRegression
-from sklearn.feature_extraction import DictVectorizer
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.feature_extraction.text import TfidfTransformer
 from sklearn.feature_selection import SelectFromModel
-from sklearn.linear_model import RidgeClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.linear_model import SGDClassifier
-from sklearn.linear_model import Perceptron
-from sklearn.linear_model import PassiveAggressiveClassifier
-from sklearn.neighbors import NearestCentroid
-import seaborn as sns # for heatmaps
-import os, os.path
+import os.path
 import math
 import time
 cwd = os.getcwd()
@@ -168,15 +161,10 @@ print('Total segments in corpus: ' + str(len(corpus)))
 vectorizer = CountVectorizer(token_pattern="(?u)\\b[\\w.-]+\\b")
 X = vectorizer.fit_transform(corpus)
 
-# collect summed frequencies for ALL users together
-frequencies = np.asarray(X.sum(axis=0)).ravel().tolist()
-frequencies_df = pd.DataFrame({'term': vectorizer.get_feature_names(), 'frequency': frequencies})
-frequencies_df.sort_values(by='frequency', ascending=False).head(20)
-
 # TF-IDF transformer
 print(str(len(vectorizer.get_feature_names())) + ' features (different domain names)')
 transformer = TfidfTransformer(smooth_idf=False)
-transformed_weights = transformer.fit_transform(X.toarray())
+X_TFIDF = transformer.fit_transform(X.toarray())
 
 # #############################################################################
 # For each user, train classifiers
@@ -194,22 +182,11 @@ for cur_user in range(NUM_OF_USERS):
     user_target.fill(-1)
     user_target[range(start_seg_idx,end_seg_idx+1)] = 1
     
-    # Do some preprocessing
-        # from: http://scikit-learn.org/stable/modules/cross_validation.html
-        #>>> from sklearn import preprocessing
-        #>>> X_train, X_test, y_train, y_test = train_test_split(
-        #...     iris.data, iris.target, test_size=0.4, random_state=0)
-        #>>> scaler = preprocessing.StandardScaler().fit(X_train)
-        #>>> X_train_transformed = scaler.transform(X_train)
-        #>>> clf = svm.SVC(C=1).fit(X_train_transformed, y_train)
-        #>>> X_test_transformed = scaler.transform(X_test)
-        #>>> clf.score(X_test_transformed, y_test)
-    
     # Do undersampling as data is imbalanced (1 against 14)
     rus = RandomUnderSampler(random_state=0)
-    X_resampled, y_resampled = rus.fit_sample(X, user_target)
+    X_resampled, y_resampled = rus.fit_sample(X_TFIDF, user_target)
     
-    # Split corpus to X_train, X_test, and user_target to Y_train, Y_test
+    # Split corpus to X_train, X_test, and Y_train, Y_test
     # Todo: use k-fold cross validation instead, as in:
     # http://scikit-learn.org/stable/modules/cross_validation.html
     X_train, X_test, y_train, y_test = train_test_split(X_resampled, y_resampled, test_size=0.4)
@@ -293,23 +270,28 @@ for cur_user in range(NUM_OF_USERS):
 
 ################## Why do we need this??
 
+# collect summed frequencies for ALL users together
+#frequencies = np.asarray(X.sum(axis=0)).ravel().tolist()
+#frequencies_df = pd.DataFrame({'term': vectorizer.get_feature_names(), 'frequency': frequencies})
+#frequencies_df.sort_values(by='frequency', ascending=False).head(20)
+
 # collect averaged weights for ALL users together
-weights = np.asarray(transformed_weights.mean(axis=0)).ravel().tolist()
-weights_df = pd.DataFrame({'term': vectorizer.get_feature_names(), 'weight': weights})
-weights_df.sort_values(by='weight', ascending=False).head(20)
-len(weights_df)
+#weights = np.asarray(transformed_weights.mean(axis=0)).ravel().tolist()
+#weights_df = pd.DataFrame({'term': vectorizer.get_feature_names(), 'weight': weights})
+#weights_df.sort_values(by='weight', ascending=False).head(20)
+#len(weights_df)
 
 # create TD-IDF features for each user
-users_data = {}
-for feature_name in vectorizer.get_feature_names():
-    users_data[feature_name] = []
+#users_data = {}
+#for feature_name in vectorizer.get_feature_names():
+#    users_data[feature_name] = []
 # for user_index, file in enumerate(os.listdir('.\\' + DATA_DIR)):
-for user_index, file in enumerate(os.listdir(DATA_DIR)):
-    print(file)
-    for feature_index, feature_name in enumerate(vectorizer.get_feature_names()):
-        users_data[feature_name].append(transformed_weights[user_index, feature_index])
-users_df = pd.DataFrame(data=users_data)
-processed_path = os.path.join(PROCESSED_DIR, 'users.csv')
-users_df.to_csv(path_or_buf=processed_path)
+#for user_index, file in enumerate(os.listdir(DATA_DIR)):
+#    print(file)
+#    for feature_index, feature_name in enumerate(vectorizer.get_feature_names()):
+#        users_data[feature_name].append(transformed_weights[user_index, feature_index])
+#users_df = pd.DataFrame(data=users_data)
+#processed_path = os.path.join(PROCESSED_DIR, 'users.csv')
+#users_df.to_csv(path_or_buf=processed_path)
 
 
