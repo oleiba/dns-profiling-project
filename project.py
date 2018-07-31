@@ -12,6 +12,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from IPython.core.display import display
+from imblearn.under_sampling import RandomUnderSampler
 from sklearn.preprocessing import Imputer # for imputing missing values
 from sklearn import metrics
 from sklearn.metrics import roc_auc_score
@@ -192,6 +193,7 @@ for cur_user in range(NUM_OF_USERS):
     user_target = np.empty(len(corpus))
     user_target.fill(-1)
     user_target[range(start_seg_idx,end_seg_idx+1)] = 1
+    
     # Do some preprocessing
         # from: http://scikit-learn.org/stable/modules/cross_validation.html
         #>>> from sklearn import preprocessing
@@ -203,12 +205,14 @@ for cur_user in range(NUM_OF_USERS):
         #>>> X_test_transformed = scaler.transform(X_test)
         #>>> clf.score(X_test_transformed, y_test)
     
-    # Should we balance segments of user and not the user?
+    # Do undersampling as data is imbalanced (1 against 14)
+    rus = RandomUnderSampler(random_state=0)
+    X_resampled, y_resampled = rus.fit_sample(X, user_target)
     
     # Split corpus to X_train, X_test, and user_target to Y_train, Y_test
     # Todo: use k-fold cross validation instead, as in:
     # http://scikit-learn.org/stable/modules/cross_validation.html
-    X_train, X_test, y_train, y_test = train_test_split(X, user_target, test_size=0.4)
+    X_train, X_test, y_train, y_test = train_test_split(X_resampled, y_resampled, test_size=0.4)
     
     #for j in range(len(y_test)):
     #   print("sample " + str(j) + "real: " + str(y_test[j]))
