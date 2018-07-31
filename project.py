@@ -19,6 +19,7 @@ from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import KFold
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import VotingClassifier
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.svm import SVC
@@ -63,7 +64,6 @@ def find_segment_end(dataframe, start_index):
     if data.empty:
         return np.nan
     minimums = data.iloc[0]
-    #minimums = dataframe[dataframe['frame.time_relative'] >= end_time].min(axis=0)
     #actual_end_time = minimums['frame.time_relative']
     # print('actual_end_time = ' + str(actual_end_time))
     end_index = minimums['frame.number']
@@ -94,9 +94,8 @@ def benchmark(clf):
     auc = roc_auc_score(y_test, pred)
     print("auc:   %0.3f" % auc)
 
-    #print("classification report:")
-    #print(metrics.classification_report(y_test, pred,
-    #                                    target_names=target_names))
+    print("classification report:")
+    print(metrics.classification_report(y_test, pred))
 
     #print("confusion matrix:")
     #print(metrics.confusion_matrix(y_test, pred))
@@ -190,54 +189,67 @@ for cur_user in range(NUM_OF_USERS):
     # Todo: use k-fold cross validation instead, as in:
     # http://scikit-learn.org/stable/modules/cross_validation.html
     X_train, X_test, y_train, y_test = train_test_split(X_resampled, y_resampled, test_size=0.4)
-    
-    #for j in range(len(y_test)):
-    #   print("sample " + str(j) + "real: " + str(y_test[j]))
-
-    # fit_transform on X_train only, and not on all corpus
-    # See example in:
-    # http://scikit-learn.org/stable/auto_examples/text/document_classification_20newsgroups.html#sphx-glr-auto-examples-text-document-classification-20newsgroups-py
 
     results = []
-    for clf, name in (
-            (KNeighborsClassifier(n_neighbors=10), "kNN"),
-            (RandomForestClassifier(n_estimators=100), "Random forest")):
-        print('=' * 80)
-        print(name)
-        results.append(benchmark(clf))
+ 
+    print('=' * 80)
+    print("kNN")
+    clf1 = KNeighborsClassifier(n_neighbors=10)
+    results.append(benchmark(clf1))
     
-    for penalty in ["l2", "l1"]:
-        print('=' * 80)
-        print("%s penalty" % penalty.upper())
-        # Train Liblinear model
-        results.append(benchmark(LinearSVC(penalty=penalty, dual=False,
-                                           tol=1e-3)))
+    print('=' * 80)
+    print("Random forest")
+    clf2 = RandomForestClassifier(n_estimators=100)
+    results.append(benchmark(clf2))
     
-        # Train SGD model
-        results.append(benchmark(SGDClassifier(alpha=.0001, n_iter=50,
-                                               penalty=penalty)))
+    print('=' * 80)
+    print("L1 penalty")
+    clf3 = LinearSVC(penalty="l1", dual=False, tol=1e-3)
+    results.append(benchmark(clf3))
     
-    # Train SGD with Elastic Net penalty
+    clf4 = SGDClassifier(alpha=.0001, max_iter=50, penalty="l1")
+    results.append(benchmark(clf4))
+    
+    print('=' * 80)
+    print("L2 penalty")
+    clf5 = LinearSVC(penalty="l2", dual=False, tol=1e-3)
+    results.append(benchmark(clf5))
+    
+    clf6 = SGDClassifier(alpha=.0001, max_iter=50, penalty="l2")
+    results.append(benchmark(clf6))
+
     print('=' * 80)
     print("Elastic-Net penalty")
-    results.append(benchmark(SGDClassifier(alpha=.0001, n_iter=50,
-                                           penalty="elasticnet")))
+    clf7 = SGDClassifier(alpha=.0001, max_iter=50, penalty="elasticnet")
+    results.append(benchmark(clf7))
     
     # Train sparse Naive Bayes classifiers
     print('=' * 80)
     print("Naive Bayes")
-    results.append(benchmark(MultinomialNB(alpha=.01)))
-    results.append(benchmark(BernoulliNB(alpha=.01)))
+    clf8 = MultinomialNB(alpha=.01)
+    results.append(benchmark(clf8))
+    clf9 = BernoulliNB(alpha=.01)
+    results.append(benchmark(clf9))
     
     print('=' * 80)
     print("LinearSVC with L1-based feature selection")
     # The smaller C, the stronger the regularization.
     # The more regularization, the more sparsity.
-    results.append(benchmark(Pipeline([
+    clf10 = Pipeline([
       ('feature_selection', SelectFromModel(LinearSVC(penalty="l1", dual=False,
                                                       tol=1e-3))),
-      ('classification', LinearSVC(penalty="l2"))])))
+      ('classification', LinearSVC(penalty="l2"))])
+    results.append(benchmark(clf10))
     
+    print('=' * 80)
+    print("Voting ensemble")
+    eclf = VotingClassifier(estimators=[('knn', clf1), ('rf', clf2), ('l1svc', clf3),
+                                        ('l1sgd', clf4), ('l2svc', clf5), ('l2sgd', clf6),
+                                        ('esgd', clf7), ('mnb', clf8), ('bnb', clf9),
+                                        ('lsvc', clf10)], voting='hard')
+    results.append(benchmark(eclf))
+
+
     # make some plots
     
     indices = np.arange(len(results))
