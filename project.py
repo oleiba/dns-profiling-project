@@ -67,16 +67,15 @@ def find_segment_end(dataframe, start_index):
         return np.nan
     minimums = data.iloc[0]
     #minimums = dataframe[dataframe['frame.time_relative'] >= end_time].min(axis=0)
-    actual_end_time = minimums['frame.time_relative']
+    #actual_end_time = minimums['frame.time_relative']
     # print('actual_end_time = ' + str(actual_end_time))
     end_index = minimums['frame.number']
     # print('end_index = ', str(end_index))
     # print('actual_end_time - start_time = ', (actual_end_time - start_time))
     return end_index
     
-all_users_segments = [] # array of all users dataframes with all segments of each (sum of (user * segments_per_user))
+all_users_segments = [[] for _ in range(NUM_OF_USERS)] # array of all users dataframes with all segments of each (sum of (user * segments_per_user))
 corpus = [] # array of strings:  each string is a space separated array of domain names
-users_num_of_segments = [] # array of integers: each element is the number of segments per user
 # for idx, file in enumerate(os.listdir('.\\' + DATA_DIR)):
 for idx, file in enumerate(os.listdir(DATA_DIR)):
     user_segments = [] # array of all segments of a single user. Each segment is of half an hour
@@ -102,14 +101,11 @@ for idx, file in enumerate(os.listdir(DATA_DIR)):
         start_index = df3.min(axis=0)['frame.number']
         end_index = find_segment_end(df3, start_index)
         max_index = df3.max(axis=0)['frame.number']
-        count = 0
         start_time = time.time()
         while not math.isnan(end_index):
-            # print('#'  + str(count))
-            count += 1
             df4 = df3[(df3['frame.number'] >= start_index) & (df3['frame.number'] < end_index)]
             #print(df4)
-            all_users_segments.append(df4)
+            all_users_segments[idx].append(df4)
             corpus.append(' '.join(df4['dns.qry.name'].values))
             start_index = end_index
             end_index = find_segment_end(df3, start_index)
@@ -117,11 +113,11 @@ for idx, file in enumerate(os.listdir(DATA_DIR)):
         end_time = time.time()
         print('loop took ' + str(end_time - start_time) + ' ms')
         df4 = df3[(df3['frame.number'] >= start_index) & (df3['frame.number'] <= max_index)]
-        all_users_segments.append(df4)
+        all_users_segments[idx].append(df4)
         corpus.append(' '.join(df4['dns.qry.name'].values))
-        users_num_of_segments.append(count + 1)
-        print('user #' + str(idx) + ': ' + str(count + 1) + ' records')
+        print('user #' + str(idx) + ': ' + str(len(all_users_segments[idx])) + ' records')
 
+print(len(corpus))
 # For each user: Need to split corpus to X_train and X_test and create Y_train and Y_test
 # Y_train and Y_test should be easy to create- set 1 for a segment of the user, set -1 otherwise
 # Train should contain samples of both the user and not of the user, better if balanced
