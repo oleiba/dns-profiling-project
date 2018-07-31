@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 from IPython.core.display import display
 from sklearn.preprocessing import Imputer # for imputing missing values
 from sklearn import metrics
+from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import KFold
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
@@ -75,6 +76,41 @@ def find_segment_end(dataframe, start_index):
     # print('end_index = ', str(end_index))
     # print('actual_end_time - start_time = ', (actual_end_time - start_time))
     return end_index
+
+# #############################################################################
+# Benchmark classifiers
+def benchmark(clf):
+    print('_' * 80)
+    print("Training: ")
+    print(clf)
+    t0 = time.time()
+    clf.fit(X_train, y_train)
+    train_time = time.time() - t0
+    print("train time: %0.3fs" % train_time)
+
+    t0 = time.time()
+    pred = clf.predict(X_test)
+    test_time = time.time() - t0
+    
+    print("test time:  %0.3fs" % test_time)
+
+    score = metrics.accuracy_score(y_test, pred)
+    print("accuracy:   %0.3f" % score)
+    
+    auc = roc_auc_score(y_test, pred)
+    print("auc:   %0.3f" % auc)
+
+    #print("classification report:")
+    #print(metrics.classification_report(y_test, pred,
+    #                                    target_names=target_names))
+
+    #print("confusion matrix:")
+    #print(metrics.confusion_matrix(y_test, pred))
+
+    print()
+    clf_descr = str(clf).split('(')[0]
+    return clf_descr, score, auc, train_time, test_time
+
 
 # #############################################################################
 # Extract relevant data
@@ -172,112 +208,82 @@ for cur_user in range(NUM_OF_USERS):
     # Split corpus to X_train, X_test, and user_target to Y_train, Y_test
     # Todo: use k-fold cross validation instead, as in:
     # http://scikit-learn.org/stable/modules/cross_validation.html
-    X_train, X_test, y_train, y_test = train_test_split(X, user_target, test_size=0.4, random_state=0)
+    X_train, X_test, y_train, y_test = train_test_split(X, user_target, test_size=0.4)
     
+    #for j in range(len(y_test)):
+    #   print("sample " + str(j) + "real: " + str(y_test[j]))
+
     # fit_transform on X_train only, and not on all corpus
     # See example in:
     # http://scikit-learn.org/stable/auto_examples/text/document_classification_20newsgroups.html#sphx-glr-auto-examples-text-document-classification-20newsgroups-py
 
-
-
-
-# #############################################################################
-# Benchmark classifiers
-def benchmark(clf):
-    print('_' * 80)
-    print("Training: ")
-    print(clf)
-    t0 = time.time()
-    clf.fit(X_train, y_train)
-    train_time = time.time() - t0
-    print("train time: %0.3fs" % train_time)
-
-    t0 = time.time()
-    pred = clf.predict(X_test)
-    test_time = time.time() - t0
-    print("test time:  %0.3fs" % test_time)
-
-    score = metrics.accuracy_score(y_test, pred)
-    print("accuracy:   %0.3f" % score)
-
-    #print("classification report:")
-    #print(metrics.classification_report(y_test, pred,
-    #                                    target_names=target_names))
-
-    #print("confusion matrix:")
-    #print(metrics.confusion_matrix(y_test, pred))
-
-    print()
-    clf_descr = str(clf).split('(')[0]
-    return clf_descr, score, train_time, test_time
-
-
-results = []
-for clf, name in (
-        (KNeighborsClassifier(n_neighbors=10), "kNN"),
-        (RandomForestClassifier(n_estimators=100), "Random forest")):
+    results = []
+    for clf, name in (
+            (KNeighborsClassifier(n_neighbors=10), "kNN"),
+            (RandomForestClassifier(n_estimators=100), "Random forest")):
+        print('=' * 80)
+        print(name)
+        results.append(benchmark(clf))
+    
+    for penalty in ["l2", "l1"]:
+        print('=' * 80)
+        print("%s penalty" % penalty.upper())
+        # Train Liblinear model
+        results.append(benchmark(LinearSVC(penalty=penalty, dual=False,
+                                           tol=1e-3)))
+    
+        # Train SGD model
+        results.append(benchmark(SGDClassifier(alpha=.0001, n_iter=50,
+                                               penalty=penalty)))
+    
+    # Train SGD with Elastic Net penalty
     print('=' * 80)
-    print(name)
-    results.append(benchmark(clf))
-
-for penalty in ["l2", "l1"]:
-    print('=' * 80)
-    print("%s penalty" % penalty.upper())
-    # Train Liblinear model
-    results.append(benchmark(LinearSVC(penalty=penalty, dual=False,
-                                       tol=1e-3)))
-
-    # Train SGD model
+    print("Elastic-Net penalty")
     results.append(benchmark(SGDClassifier(alpha=.0001, n_iter=50,
-                                           penalty=penalty)))
-
-# Train SGD with Elastic Net penalty
-print('=' * 80)
-print("Elastic-Net penalty")
-results.append(benchmark(SGDClassifier(alpha=.0001, n_iter=50,
-                                       penalty="elasticnet")))
-
-# Train sparse Naive Bayes classifiers
-print('=' * 80)
-print("Naive Bayes")
-results.append(benchmark(MultinomialNB(alpha=.01)))
-results.append(benchmark(BernoulliNB(alpha=.01)))
-
-print('=' * 80)
-print("LinearSVC with L1-based feature selection")
-# The smaller C, the stronger the regularization.
-# The more regularization, the more sparsity.
-results.append(benchmark(Pipeline([
-  ('feature_selection', SelectFromModel(LinearSVC(penalty="l1", dual=False,
-                                                  tol=1e-3))),
-  ('classification', LinearSVC(penalty="l2"))])))
-
-# make some plots
-
-indices = np.arange(len(results))
-
-results = [[x[i] for x in results] for i in range(4)]
-
-clf_names, score, training_time, test_time = results
-training_time = np.array(training_time) / np.max(training_time)
-test_time = np.array(test_time) / np.max(test_time)
-
-plt.figure(figsize=(12, 8))
-plt.title("Score")
-plt.barh(indices, score, .2, label="score", color='navy')
-plt.barh(indices + .3, training_time, .2, label="training time",
-         color='c')
-plt.barh(indices + .6, test_time, .2, label="test time", color='darkorange')
-plt.yticks(())
-plt.legend(loc='best')
-plt.subplots_adjust(left=.25)
-plt.subplots_adjust(top=.95)
-plt.subplots_adjust(bottom=.05)
-
-for i, c in zip(indices, clf_names):
-    plt.text(-.3, i, c)
-
-plt.show()
+                                           penalty="elasticnet")))
+    
+    # Train sparse Naive Bayes classifiers
+    print('=' * 80)
+    print("Naive Bayes")
+    results.append(benchmark(MultinomialNB(alpha=.01)))
+    results.append(benchmark(BernoulliNB(alpha=.01)))
+    
+    print('=' * 80)
+    print("LinearSVC with L1-based feature selection")
+    # The smaller C, the stronger the regularization.
+    # The more regularization, the more sparsity.
+    results.append(benchmark(Pipeline([
+      ('feature_selection', SelectFromModel(LinearSVC(penalty="l1", dual=False,
+                                                      tol=1e-3))),
+      ('classification', LinearSVC(penalty="l2"))])))
+    
+    # make some plots
+    
+    indices = np.arange(len(results))
+    
+    results = [[x[i] for x in results] for i in range(5)]
+    
+    clf_names, score, auc, training_time, test_time = results
+    training_time = np.array(training_time) / np.max(training_time)
+    test_time = np.array(test_time) / np.max(test_time)
+    
+    plt.figure(figsize=(12, 8))
+    plt.title("Score")
+    plt.barh(indices, score, .2, label="score", color='navy')
+    plt.barh(indices + .2, score, .2, label="auc", color='blue')
+    plt.barh(indices + .4, training_time, .2, label="training time",
+             color='c')
+    plt.barh(indices + .6, test_time, .2, label="test time", color='darkorange')
+    plt.yticks(())
+    plt.legend(loc='best')
+    plt.subplots_adjust(left=.25)
+    plt.subplots_adjust(top=.95)
+    plt.subplots_adjust(bottom=.05)
+    
+    for i, c in zip(indices, clf_names):
+        plt.text(-.3, i, c)
+    
+    plt.show()
 #############################################################################
 
 
