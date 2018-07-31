@@ -14,6 +14,8 @@ import matplotlib.pyplot as plt
 from IPython.core.display import display
 from sklearn.preprocessing import Imputer # for imputing missing values
 from sklearn import metrics
+from sklearn.model_selection import KFold
+from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.metrics import classification_report, confusion_matrix
@@ -73,6 +75,9 @@ def find_segment_end(dataframe, start_index):
     # print('end_index = ', str(end_index))
     # print('actual_end_time - start_time = ', (actual_end_time - start_time))
     return end_index
+
+# #############################################################################
+# Extract relevant data
     
 all_users_segments = [[] for _ in range(NUM_OF_USERS)] # array of all users dataframes with all segments of each (sum of (user * segments_per_user))
 corpus = [] # array of strings:  each string is a space separated array of domain names
@@ -117,13 +122,10 @@ for idx, file in enumerate(os.listdir(DATA_DIR)):
         corpus.append(' '.join(df4['dns.qry.name'].values))
         print('user #' + str(idx) + ': ' + str(len(all_users_segments[idx])) + ' records')
 
-print(len(corpus))
-# For each user: Need to split corpus to X_train and X_test and create Y_train and Y_test
-# Y_train and Y_test should be easy to create- set 1 for a segment of the user, set -1 otherwise
-# Train should contain samples of both the user and not of the user, better if balanced
-# Then, we should fit_transform on X_train only, and not on all corpus
-# See example in:
-# http://scikit-learn.org/stable/auto_examples/text/document_classification_20newsgroups.html#sphx-glr-auto-examples-text-document-classification-20newsgroups-py
+print('Total segments in corpus: ' + str(len(corpus)))
+
+# #############################################################################
+# Get features in bag of words representation
 
 # Count occurrences (array of frequencies)
 vectorizer = CountVectorizer(token_pattern="(?u)\\b[\\w.-]+\\b")
@@ -139,6 +141,45 @@ print(str(len(vectorizer.get_feature_names())) + ' features (different domain na
 transformer = TfidfTransformer(smooth_idf=False)
 transformed_weights = transformer.fit_transform(X.toarray())
 
+# #############################################################################
+# For each user, train classifiers
+
+for cur_user in range(NUM_OF_USERS):
+    print('Training classifiers for user ' + str(cur_user))
+    start_seg_idx = 0
+    for i in range(cur_user):
+        start_seg_idx = start_seg_idx + len(all_users_segments[i])
+    end_seg_idx = start_seg_idx + len(all_users_segments[cur_user]) - 1
+    print('User segments are ' + str(start_seg_idx) + ' to ' + str(end_seg_idx))
+    
+    # Set target according to user segments - 1 for a segment of the user, -1 otherwise
+    user_target = np.empty(len(corpus))
+    user_target.fill(-1)
+    user_target[range(start_seg_idx,end_seg_idx+1)] = 1
+    # Do some preprocessing
+        # from: http://scikit-learn.org/stable/modules/cross_validation.html
+        #>>> from sklearn import preprocessing
+        #>>> X_train, X_test, y_train, y_test = train_test_split(
+        #...     iris.data, iris.target, test_size=0.4, random_state=0)
+        #>>> scaler = preprocessing.StandardScaler().fit(X_train)
+        #>>> X_train_transformed = scaler.transform(X_train)
+        #>>> clf = svm.SVC(C=1).fit(X_train_transformed, y_train)
+        #>>> X_test_transformed = scaler.transform(X_test)
+        #>>> clf.score(X_test_transformed, y_test)
+    
+    # Should we balance segments of user and not the user?
+    
+    # Split corpus to X_train, X_test, and user_target to Y_train, Y_test
+    # Todo: use k-fold cross validation instead, as in:
+    # http://scikit-learn.org/stable/modules/cross_validation.html
+    X_train, X_test, y_train, y_test = train_test_split(X, user_target, test_size=0.4, random_state=0)
+    
+    # fit_transform on X_train only, and not on all corpus
+    # See example in:
+    # http://scikit-learn.org/stable/auto_examples/text/document_classification_20newsgroups.html#sphx-glr-auto-examples-text-document-classification-20newsgroups-py
+
+
+
 
 # #############################################################################
 # Benchmark classifiers
@@ -146,14 +187,14 @@ def benchmark(clf):
     print('_' * 80)
     print("Training: ")
     print(clf)
-    t0 = time()
+    t0 = time.time()
     clf.fit(X_train, y_train)
-    train_time = time() - t0
+    train_time = time.time() - t0
     print("train time: %0.3fs" % train_time)
 
-    t0 = time()
+    t0 = time.time()
     pred = clf.predict(X_test)
-    test_time = time() - t0
+    test_time = time.time() - t0
     print("test time:  %0.3fs" % test_time)
 
     score = metrics.accuracy_score(y_test, pred)
@@ -173,9 +214,6 @@ def benchmark(clf):
 
 results = []
 for clf, name in (
-        (RidgeClassifier(tol=1e-2, solver="lsqr"), "Ridge Classifier"),
-        (Perceptron(n_iter=50), "Perceptron"),
-        (PassiveAggressiveClassifier(n_iter=50), "Passive-Aggressive"),
         (KNeighborsClassifier(n_neighbors=10), "kNN"),
         (RandomForestClassifier(n_estimators=100), "Random forest")):
     print('=' * 80)
@@ -198,11 +236,6 @@ print('=' * 80)
 print("Elastic-Net penalty")
 results.append(benchmark(SGDClassifier(alpha=.0001, n_iter=50,
                                        penalty="elasticnet")))
-
-# Train NearestCentroid without threshold
-print('=' * 80)
-print("NearestCentroid (aka Rocchio classifier)")
-results.append(benchmark(NearestCentroid()))
 
 # Train sparse Naive Bayes classifiers
 print('=' * 80)
