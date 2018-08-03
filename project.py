@@ -13,7 +13,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from IPython.core.display import display
 from imblearn.under_sampling import RandomUnderSampler
-from sklearn.preprocessing import Imputer # for imputing missing values
 from sklearn import metrics
 from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import KFold
@@ -22,16 +21,10 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.ensemble import VotingClassifier
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.metrics import classification_report, confusion_matrix
-from sklearn.svm import SVC
-from sklearn.svm import LinearSVC
-from sklearn.naive_bayes import GaussianNB
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.naive_bayes import BernoulliNB
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.feature_extraction.text import TfidfTransformer
-from sklearn.feature_selection import SelectFromModel
-from sklearn.pipeline import Pipeline
-from sklearn.linear_model import SGDClassifier
 import os.path
 import math
 import time
@@ -84,14 +77,17 @@ def benchmark(clf):
 
     t0 = time.time()
     pred = clf.predict(X_test)
+
     test_time = time.time() - t0
-    
+
     print("test time:  %0.3fs" % test_time)
 
     score = metrics.accuracy_score(y_test, pred)
     print("accuracy:   %0.3f" % score)
-    
-    auc = roc_auc_score(y_test, pred)
+
+    pred_proba = clf.predict_proba(X_test)
+    y_pred = pred_proba[:,1]
+    auc = roc_auc_score(y_test, y_pred)
     print("auc:   %0.3f" % auc)
 
     print("classification report:")
@@ -202,51 +198,17 @@ for cur_user in range(NUM_OF_USERS):
     clf2 = RandomForestClassifier(n_estimators=100)
     results.append(benchmark(clf2))
     
-    print('=' * 80)
-    print("L1 penalty")
-    clf3 = LinearSVC(penalty="l1", dual=False, tol=1e-3)
-    results.append(benchmark(clf3))
-    
-    clf4 = SGDClassifier(alpha=.0001, max_iter=50, penalty="l1")
-    results.append(benchmark(clf4))
-    
-    print('=' * 80)
-    print("L2 penalty")
-    clf5 = LinearSVC(penalty="l2", dual=False, tol=1e-3)
-    results.append(benchmark(clf5))
-    
-    clf6 = SGDClassifier(alpha=.0001, max_iter=50, penalty="l2")
-    results.append(benchmark(clf6))
-
-    print('=' * 80)
-    print("Elastic-Net penalty")
-    clf7 = SGDClassifier(alpha=.0001, max_iter=50, penalty="elasticnet")
-    results.append(benchmark(clf7))
-    
     # Train sparse Naive Bayes classifiers
     print('=' * 80)
     print("Naive Bayes")
-    clf8 = MultinomialNB(alpha=.01)
-    results.append(benchmark(clf8))
-    clf9 = BernoulliNB(alpha=.01)
-    results.append(benchmark(clf9))
-    
-    print('=' * 80)
-    print("LinearSVC with L1-based feature selection")
-    # The smaller C, the stronger the regularization.
-    # The more regularization, the more sparsity.
-    clf10 = Pipeline([
-      ('feature_selection', SelectFromModel(LinearSVC(penalty="l1", dual=False,
-                                                      tol=1e-3))),
-      ('classification', LinearSVC(penalty="l2"))])
-    results.append(benchmark(clf10))
+    clf3 = MultinomialNB(alpha=.01)
+    results.append(benchmark(clf3))
+    clf4 = BernoulliNB(alpha=.01)
+    results.append(benchmark(clf4))
     
     print('=' * 80)
     print("Voting ensemble")
-    eclf = VotingClassifier(estimators=[('knn', clf1), ('rf', clf2), ('l1svc', clf3),
-                                        ('l1sgd', clf4), ('l2svc', clf5), ('l2sgd', clf6),
-                                        ('esgd', clf7), ('mnb', clf8), ('bnb', clf9),
-                                        ('lsvc', clf10)], voting='hard')
+    eclf = VotingClassifier(estimators=[('knn', clf1), ('rf', clf2), ('mnb', clf3), ('bnb', clf4)], voting='soft')
     results.append(benchmark(eclf))
 
 
@@ -278,32 +240,3 @@ for cur_user in range(NUM_OF_USERS):
     
     plt.show()
 #############################################################################
-
-
-################## Why do we need this??
-
-# collect summed frequencies for ALL users together
-#frequencies = np.asarray(X.sum(axis=0)).ravel().tolist()
-#frequencies_df = pd.DataFrame({'term': vectorizer.get_feature_names(), 'frequency': frequencies})
-#frequencies_df.sort_values(by='frequency', ascending=False).head(20)
-
-# collect averaged weights for ALL users together
-#weights = np.asarray(transformed_weights.mean(axis=0)).ravel().tolist()
-#weights_df = pd.DataFrame({'term': vectorizer.get_feature_names(), 'weight': weights})
-#weights_df.sort_values(by='weight', ascending=False).head(20)
-#len(weights_df)
-
-# create TD-IDF features for each user
-#users_data = {}
-#for feature_name in vectorizer.get_feature_names():
-#    users_data[feature_name] = []
-# for user_index, file in enumerate(os.listdir('.\\' + DATA_DIR)):
-#for user_index, file in enumerate(os.listdir(DATA_DIR)):
-#    print(file)
-#    for feature_index, feature_name in enumerate(vectorizer.get_feature_names()):
-#        users_data[feature_name].append(transformed_weights[user_index, feature_index])
-#users_df = pd.DataFrame(data=users_data)
-#processed_path = os.path.join(PROCESSED_DIR, 'users.csv')
-#users_df.to_csv(path_or_buf=processed_path)
-
-
