@@ -144,7 +144,7 @@ for idx, file in enumerate(os.listdir(DATA_DIR)):
             end_index = find_segment_end(df3, start_index)
         # last segment
         end_time = time.time()
-        print('loop took ' + str(end_time - start_time) + ' ms')
+        print('loop took ' + str(end_time - start_time) + ' s')
         df4 = df3[(df3['frame.number'] >= start_index) & (df3['frame.number'] <= max_index)]
         all_users_segments[idx].append(df4)
         corpus.append(' '.join(df4['dns.qry.name'].values))
@@ -223,7 +223,7 @@ for cur_user in range(NUM_OF_USERS):
     
     clf_names, score, auc, training_time, test_time, fpr, tpr = results
     training_time_norm = np.array(training_time) / np.max(training_time)
-    test_time = np.array(test_time) / np.max(test_time)
+    test_time_norm = np.array(test_time) / np.max(test_time)
 
     # Plot all ROC curves
     plt.figure()
@@ -242,20 +242,26 @@ for cur_user in range(NUM_OF_USERS):
     plt.legend(loc="lower right")
     plt.show()
 
-    plt.figure(figsize=(12, 8))
+    # Plot extra data as bars
+    fig, ax = plt.subplots(figsize=(12, 8)) 
     plt.title("Score")
-    plt.barh(indices, score, .3, label="score", color='navy')
-    plt.barh(indices + .3, training_time_norm, .3, label="training time", color='c')
-
-    plt.barh(indices + .6, test_time, .3, label="test time", color='darkorange')
-    plt.yticks(())
-    plt.legend(loc='best')
-    plt.subplots_adjust(left=.25)
-    plt.subplots_adjust(top=.95)
-    plt.subplots_adjust(bottom=.05)
-    
-    for i, c in zip(indices, clf_names):
-        plt.text(-.3, i, c)
+    ax.barh(indices, score, .2, label="score", color='navy')
+    ax.barh(indices + .2, auc, .2, label="auc", color='deeppink')
+    ax.barh(indices + .4, training_time_norm, .2, label="training time", color='c')
+    ax.barh(indices + .6, test_time_norm, .2, label="test time", color='darkorange')
+    ax.set_yticks(indices + 0.3)
+    ax.set_yticklabels(clf_names, minor=False)
+    for i, v in enumerate(score):
+        ax.text(v + 0.01, i, '{0:0.3f}'.format(v), color='black', fontweight='bold')
+    for i, v in enumerate(auc):
+        ax.text(v + 0.01, i + .2, '{0:0.3f}'.format(v), color='black', fontweight='bold')
+    for i, v in enumerate(training_time):
+        ax.text(training_time_norm[i] + 0.01, i + .4, '{0:0.3f} sec'.format(v), color='black', fontweight='bold')
+    for i, v in enumerate(test_time):
+        ax.text(test_time_norm[i] + 0.01, i + .6, '{0:0.3f} sec'.format(v), color='black', fontweight='bold')
+    plt.legend(loc='lower left')
+    x0, x1, y0, y1 = plt.axis()
+    plt.axis((x0, x1 + 0.06, y0, y1))
     
     plt.show()
 #############################################################################
