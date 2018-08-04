@@ -10,6 +10,7 @@ import os # to set working directory
 import csv # to read/write csv files
 import pandas as pd
 import numpy as np
+import itertools
 import matplotlib.pyplot as plt
 from IPython.core.display import display
 from imblearn.under_sampling import RandomUnderSampler
@@ -87,7 +88,9 @@ def benchmark(clf):
 
     pred_proba = clf.predict_proba(X_test)
     y_pred = pred_proba[:,1]
-    auc = roc_auc_score(y_test, y_pred)
+
+    fpr, tpr, _ = metrics.roc_curve(y_test, y_pred)
+    auc = metrics.auc(fpr, tpr)
     print("auc:   %0.3f" % auc)
 
     print("classification report:")
@@ -98,7 +101,7 @@ def benchmark(clf):
 
     print()
     clf_descr = str(clf).split('(')[0]
-    return clf_descr, score, auc, train_time, test_time
+    return clf_descr, score, auc, train_time, test_time, fpr, tpr
 
 
 # #############################################################################
@@ -216,19 +219,35 @@ for cur_user in range(NUM_OF_USERS):
     
     indices = np.arange(len(results))
     
-    results = [[x[i] for x in results] for i in range(5)]
+    results = [[x[i] for x in results] for i in range(7)]
     
-    clf_names, score, auc, training_time, test_time = results
-    training_time = np.array(training_time) / np.max(training_time)
+    clf_names, score, auc, training_time, test_time, fpr, tpr = results
+    training_time_norm = np.array(training_time) / np.max(training_time)
     test_time = np.array(test_time) / np.max(test_time)
-    
+
+    # Plot all ROC curves
+    plt.figure()
+    lw = 2
+    colors = itertools.cycle(['deeppink', 'navy', 'aqua', 'darkorange', 'cornflowerblue'])
+    for i, color in zip(range(5), colors):
+        plt.plot(fpr[i], tpr[i], color=color, lw=lw,
+                 label='{0} (area = {1:0.3f})'
+                 ''.format(clf_names[i], auc[i]))
+    plt.plot([0, 1], [0, 1], 'k--', lw=lw)
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('Receiver operating characteristic of user {0}'.format(cur_user))
+    plt.legend(loc="lower right")
+    plt.show()
+
     plt.figure(figsize=(12, 8))
     plt.title("Score")
-    plt.barh(indices, score, .2, label="score", color='navy')
-    plt.barh(indices + .2, score, .2, label="auc", color='blue')
-    plt.barh(indices + .4, training_time, .2, label="training time",
-             color='c')
-    plt.barh(indices + .6, test_time, .2, label="test time", color='darkorange')
+    plt.barh(indices, score, .3, label="score", color='navy')
+    plt.barh(indices + .3, training_time_norm, .3, label="training time", color='c')
+
+    plt.barh(indices + .6, test_time, .3, label="test time", color='darkorange')
     plt.yticks(())
     plt.legend(loc='best')
     plt.subplots_adjust(left=.25)
