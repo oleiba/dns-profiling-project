@@ -167,6 +167,10 @@ X_TFIDF = transformer.fit_transform(X.toarray())
 # #############################################################################
 # For each user, train classifiers
 
+accuracy_score_totals = []
+auc_totals = []
+training_time_totals = []
+test_time_totals = []
 for cur_user in range(NUM_OF_USERS):
     print('Training classifiers for user ' + str(cur_user))
     start_seg_idx = 0
@@ -224,6 +228,11 @@ for cur_user in range(NUM_OF_USERS):
     clf_names, score, auc, training_time, test_time, fpr, tpr = results
     training_time_norm = np.array(training_time) / np.max(training_time)
     test_time_norm = np.array(test_time) / np.max(test_time)
+    
+    accuracy_score_totals.append(score)
+    auc_totals.append(auc)
+    training_time_totals.append(training_time_norm)
+    test_time_totals.append(test_time_norm)
 
     # Plot all ROC curves
     plt.figure()
@@ -242,26 +251,41 @@ for cur_user in range(NUM_OF_USERS):
     plt.legend(loc="lower right")
     plt.show()
 
-    # Plot extra data as bars
-    fig, ax = plt.subplots(figsize=(12, 8)) 
-    plt.title("Score")
-    ax.barh(indices, score, .2, label="score", color='navy')
-    ax.barh(indices + .2, auc, .2, label="auc", color='deeppink')
-    ax.barh(indices + .4, training_time_norm, .2, label="training time", color='c')
-    ax.barh(indices + .6, test_time_norm, .2, label="test time", color='darkorange')
-    ax.set_yticks(indices + 0.3)
-    ax.set_yticklabels(clf_names, minor=False)
-    for i, v in enumerate(score):
-        ax.text(v + 0.01, i, '{0:0.3f}'.format(v), color='black', fontweight='bold')
-    for i, v in enumerate(auc):
-        ax.text(v + 0.01, i + .2, '{0:0.3f}'.format(v), color='black', fontweight='bold')
-    for i, v in enumerate(training_time):
-        ax.text(training_time_norm[i] + 0.01, i + .4, '{0:0.3f} sec'.format(v), color='black', fontweight='bold')
-    for i, v in enumerate(test_time):
-        ax.text(test_time_norm[i] + 0.01, i + .6, '{0:0.3f} sec'.format(v), color='black', fontweight='bold')
-    plt.legend(loc='lower left')
-    x0, x1, y0, y1 = plt.axis()
-    plt.axis((x0, x1 + 0.06, y0, y1))
-    
-    plt.show()
+
+def calc_avgs(totals):
+    totals_arr = [0, 0, 0, 0, 0]
+    for i in range(len(totals)):
+        for j in range(5):
+            totals_arr[j] += totals[i][j]
+    for j in range(5):
+        totals_arr[j] = totals_arr[j] / len(totals)
+    return totals_arr
+
+accuracy_score_avgs =  calc_avgs(accuracy_score_totals)
+auc_avgs = calc_avgs(auc_totals)
+training_time_avgs = calc_avgs(training_time_totals)
+test_time_avgs = calc_avgs(test_time_totals)
+# Plot extra data as bars
+fig, ax = plt.subplots(figsize=(12, 8)) 
+# plt.title("Score")
+ax.barh(indices, accuracy_score_avgs, .2, label="Accuracy", color='navy')
+ax.barh(indices + .2, auc_avgs, .2, label="AUC", color='deeppink')
+ax.barh(indices + .4, training_time_avgs, .2, label="Training time", color='c')
+ax.barh(indices + .6, test_time_avgs, .2, label="Test time", color='darkorange')
+ax.set_yticks(indices + 0.3)
+ax.set_yticklabels(clf_names, minor=False)
+for i, v in enumerate(score):
+    ax.text(v + 0.01, i, '{0:0.3f}'.format(v), color='black', fontweight='bold')
+for i, v in enumerate(auc):
+    ax.text(v + 0.01, i + .2, '{0:0.3f}'.format(v), color='black', fontweight='bold')
+for i, v in enumerate(training_time):
+    ax.text(training_time_norm[i] + 0.01, i + .4, '{0:0.3f} sec'.format(v), color='black', fontweight='bold')
+for i, v in enumerate(test_time):
+    ax.text(test_time_norm[i] + 0.01, i + .6, '{0:0.3f} sec'.format(v), color='black', fontweight='bold')
+plt.legend(loc='lower left')
+x0, x1, y0, y1 = plt.axis()
+plt.axis((x0, x1 + 0.06, y0, y1))
+
+# plt.show()
+plt.savefig('.//Results//averages.png')
 #############################################################################
