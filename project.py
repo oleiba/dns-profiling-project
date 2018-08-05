@@ -35,13 +35,7 @@ print(cwd)
 DIR = "C:\\Users\\Administrator\\Documents\\MyResearch\\attack-methods\\dns-profiling-project"
 # DIR = "/home/yaniv/src/dns-profiling-project"
 DATA_DIR = 'DNS'
-DOMAIN_SUFFIXES_FILE_NAME = 'tld-desc.csv'
-PROCESSED_DIR = 'processed'
 os.chdir(DIR)
-
-with open(DOMAIN_SUFFIXES_FILE_NAME, 'r') as results:
-    domainSuffixesReader = csv.reader(results, delimiter=',')
-    domainSuffixes = list(domainSuffixesReader)
 
 # NUM_OF_USERS = len(os.listdir('.\\' + DATA_DIR))
 NUM_OF_USERS = len(os.listdir(DATA_DIR))
@@ -231,8 +225,8 @@ for cur_user in range(NUM_OF_USERS):
     
     accuracy_score_totals.append(score)
     auc_totals.append(auc)
-    training_time_totals.append(training_time_norm)
-    test_time_totals.append(test_time_norm)
+    training_time_totals.append(training_time)
+    test_time_totals.append(test_time)
     
     # Plot all ROC curves
     plt.figure()
@@ -266,24 +260,26 @@ accuracy_score_avgs =  calc_avgs(accuracy_score_totals)
 auc_avgs = calc_avgs(auc_totals)
 training_time_avgs = calc_avgs(training_time_totals)
 test_time_avgs = calc_avgs(test_time_totals)
+training_time_avg_norm = np.array(training_time_avgs) / np.max(training_time_avgs)
+test_time_avg_norm = np.array(test_time_avgs) / np.max(test_time_avgs)
 
 # Plot extra data as bars
 fig, ax = plt.subplots(figsize=(12, 8)) 
 # plt.title("Score")
 ax.barh(indices, accuracy_score_avgs, .2, label="Accuracy", color='navy')
 ax.barh(indices + .2, auc_avgs, .2, label="AUC", color='deeppink')
-ax.barh(indices + .4, training_time_avgs, .2, label="Training time", color='c')
-ax.barh(indices + .6, test_time_avgs, .2, label="Test time", color='darkorange')
+ax.barh(indices + .4, training_time_avg_norm, .2, label="Training time", color='c')
+ax.barh(indices + .6, test_time_avg_norm, .2, label="Test time", color='darkorange')
 ax.set_yticks(indices + 0.3)
 ax.set_yticklabels(clf_names, minor=False)
-for i, v in enumerate(score):
+for i, v in enumerate(accuracy_score_avgs):
     ax.text(v + 0.01, i, '{0:0.3f}'.format(v), color='black', fontweight='bold')
-for i, v in enumerate(auc):
+for i, v in enumerate(auc_avgs):
     ax.text(v + 0.01, i + .2, '{0:0.3f}'.format(v), color='black', fontweight='bold')
-for i, v in enumerate(training_time):
-    ax.text(training_time_norm[i] + 0.01, i + .4, '{0:0.3f} sec'.format(v), color='black', fontweight='bold')
-for i, v in enumerate(test_time):
-    ax.text(test_time_norm[i] + 0.01, i + .6, '{0:0.3f} sec'.format(v), color='black', fontweight='bold')
+for i, v in enumerate(training_time_avgs):
+    ax.text(training_time_avg_norm[i] + 0.01, i + .4, '{0:0.3f} sec'.format(v), color='black', fontweight='bold')
+for i, v in enumerate(test_time_avgs):
+    ax.text(test_time_avg_norm[i] + 0.01, i + .6, '{0:0.3f} sec'.format(v), color='black', fontweight='bold')
 plt.legend(loc='lower left')
 x0, x1, y0, y1 = plt.axis()
 plt.axis((x0, x1 + 0.06, y0, y1))
