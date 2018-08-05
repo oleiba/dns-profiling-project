@@ -233,6 +233,24 @@ for cur_user in range(NUM_OF_USERS):
     auc_totals.append(auc)
     training_time_totals.append(training_time_norm)
     test_time_totals.append(test_time_norm)
+    
+    # Plot all ROC curves
+    plt.figure()
+    lw = 2
+    colors = itertools.cycle(['deeppink', 'navy', 'aqua', 'darkorange', 'cornflowerblue'])
+    for i, color in zip(range(5), colors):
+        plt.plot(fpr[i], tpr[i], color=color, lw=lw,
+                 label='{0} (area = {1:0.3f})'
+                 ''.format(clf_names[i], auc[i]))
+    plt.plot([0, 1], [0, 1], 'k--', lw=lw)
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('Receiver operating characteristic of user {0}'.format(cur_user))
+    plt.legend(loc="lower right")
+    # plt.show()
+    plt.savefig('.//Results//ROC' + str(cur_user) + '.png')
 
 
 def calc_avgs(totals):
@@ -248,24 +266,6 @@ accuracy_score_avgs =  calc_avgs(accuracy_score_totals)
 auc_avgs = calc_avgs(auc_totals)
 training_time_avgs = calc_avgs(training_time_totals)
 test_time_avgs = calc_avgs(test_time_totals)
-
-# Plot all ROC curves
-plt.figure()
-lw = 2
-colors = itertools.cycle(['deeppink', 'navy', 'aqua', 'darkorange', 'cornflowerblue'])
-for i, color in zip(range(5), colors):
-    plt.plot(fpr[i], tpr[i], color=color, lw=lw,
-             label='{0} (area = {1:0.3f})'
-             ''.format(clf_names[i], auc_avgs[i]))
-plt.plot([0, 1], [0, 1], 'k--', lw=lw)
-plt.xlim([0.0, 1.0])
-plt.ylim([0.0, 1.05])
-plt.xlabel('False Positive Rate')
-plt.ylabel('True Positive Rate')
-plt.title('Receiver operating characteristic of user {0}'.format(cur_user))
-plt.legend(loc="lower right")
-# plt.show()
-plt.savefig('.//Results//ROC.png')
 
 # Plot extra data as bars
 fig, ax = plt.subplots(figsize=(12, 8)) 
