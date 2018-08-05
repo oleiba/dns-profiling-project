@@ -2,7 +2,7 @@
 """
 Created on Sat Jul 21 11:25:25 2018
 
-@author: Administrator
+@author: Yaniv Agman and Oded Leiba
 """
 
 from __future__ import division
@@ -10,29 +10,30 @@ import os # to set working directory
 import csv # to read/write csv files
 import pandas as pd
 import numpy as np
+import itertools
 import matplotlib.pyplot as plt
 from IPython.core.display import display
-from sklearn.preprocessing import Imputer # for imputing missing values
+from imblearn.under_sampling import RandomUnderSampler
 from sklearn import metrics
+from sklearn.metrics import roc_auc_score
+from sklearn.model_selection import KFold
+from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import VotingClassifier
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.metrics import classification_report, confusion_matrix
-from sklearn.svm import SVC
-from sklearn.svm import LinearSVC
-from sklearn.naive_bayes import GaussianNB
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.naive_bayes import BernoulliNB
-from sklearn.linear_model import LogisticRegression
-from sklearn.feature_extraction import DictVectorizer
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.feature_extraction.text import TfidfTransformer
-import seaborn as sns # for heatmaps
-import os, os.path
+import os.path
 import math
+import time
 cwd = os.getcwd()
 print(cwd)
 
 DIR = "C:\\Users\\Administrator\\Documents\\MyResearch\\attack-methods\\dns-profiling-project"
+# DIR = "/home/yaniv/src/dns-profiling-project"
 DATA_DIR = 'DNS'
 DOMAIN_SUFFIXES_FILE_NAME = 'tld-desc.csv'
 PROCESSED_DIR = 'processed'
@@ -42,59 +43,251 @@ with open(DOMAIN_SUFFIXES_FILE_NAME, 'r') as results:
     domainSuffixesReader = csv.reader(results, delimiter=',')
     domainSuffixes = list(domainSuffixesReader)
 
-NUM_OF_USERS = len(os.listdir('.\\' + DATA_DIR))
+# NUM_OF_USERS = len(os.listdir('.\\' + DATA_DIR))
+NUM_OF_USERS = len(os.listdir(DATA_DIR))
 print(str(NUM_OF_USERS) + ' users')
-corpus = []
-for idx, file in enumerate(os.listdir('.\\' + DATA_DIR)):
+
+# input: start index of DataFrame
+# output: end index of 30 minutes segment, exclusive. Nan if that's the last segment
+def find_segment_end(dataframe, start_index):
+    start_time = dataframe[dataframe['frame.number'] == start_index]['frame.time_relative'].iloc[0]
+    # print('start_time = ' + str(start_time))
+    end_time = start_time + 60 * 30     # 60 seconds * 30 minutes
+    # print('end_time = ' + str(end_time))
+    data = dataframe[dataframe['frame.time_relative'] >= end_time]
+    if data.empty:
+        return np.nan
+    minimums = data.iloc[0]
+    #actual_end_time = minimums['frame.time_relative']
+    # print('actual_end_time = ' + str(actual_end_time))
+    end_index = minimums['frame.number']
+    # print('end_index = ', str(end_index))
+    # print('actual_end_time - start_time = ', (actual_end_time - start_time))
+    return end_index
+
+# #############################################################################
+# Benchmark classifiers
+def benchmark(clf):
+    print('_' * 80)
+    print("Training: ")
+    print(clf)
+    t0 = time.time()
+    clf.fit(X_train, y_train)
+    train_time = time.time() - t0
+    print("train time: %0.3fs" % train_time)
+
+    t0 = time.time()
+    pred = clf.predict(X_test)
+
+    test_time = time.time() - t0
+
+    print("test time:  %0.3fs" % test_time)
+
+    score = metrics.accuracy_score(y_test, pred)
+    print("accuracy:   %0.3f" % score)
+
+    pred_proba = clf.predict_proba(X_test)
+    y_pred = pred_proba[:,1]
+
+    fpr, tpr, _ = metrics.roc_curve(y_test, y_pred)
+    auc = metrics.auc(fpr, tpr)
+    print("auc:   %0.3f" % auc)
+
+    print("classification report:")
+    print(metrics.classification_report(y_test, pred))
+
+    #print("confusion matrix:")
+    #print(metrics.confusion_matrix(y_test, pred))
+
+    print()
+    clf_descr = str(clf).split('(')[0]
+    return clf_descr, score, auc, train_time, test_time, fpr, tpr
+
+
+# #############################################################################
+# Extract relevant data
+    
+all_users_segments = [[] for _ in range(NUM_OF_USERS)] # array of all users dataframes with all segments of each (sum of (user * segments_per_user))
+corpus = [] # array of strings:  each string is a space separated array of domain names
+# for idx, file in enumerate(os.listdir('.\\' + DATA_DIR)):
+for idx, file in enumerate(os.listdir(DATA_DIR)):
+    user_segments = [] # array of all segments of a single user. Each segment is of half an hour
     print(file)
     with open(os.path.join(DATA_DIR, file), 'r') as results:
         df = pd.read_csv(results, delimiter=',')
-        df.head()
-        print(df['dns.qry.name'].values)
         print(str(len(df['dns.qry.name'].values)) + ' values pre-filter')
-        
+    
         # filter to have only IPv4 valid responses
         df2 = df[(df['dns.qry.type'] == 1) & (df['dns.flags.response'] == 1) & (df['dns.flags.rcode'] == 0)]
+        # we take only the fields we need
+        df2 = df2[['frame.number', 'frame.time_relative', 'dns.qry.name']]
         df2.index = range(len(df2))
         print(str(len(df2['dns.qry.name'].values)) + ' values post-filter')
         
-        # special cases
+        # special cases 
         df3 = df2.copy()
         df3['dns.qry.name'] = df2['dns.qry.name'].replace(value='whatsapp.net', regex='.*whatsapp.*', inplace=False)
         print(str(len(df3['dns.qry.name'].values)) + ' post group by whatsapp')
         print(len(df3['dns.qry.name'].values))
-        all_names_as_text = ' '.join(df3['dns.qry.name'].values)
-        corpus.append(all_names_as_text)
+    
+        # slice into segments
+        start_index = df3.min(axis=0)['frame.number']
+        end_index = find_segment_end(df3, start_index)
+        max_index = df3.max(axis=0)['frame.number']
+        start_time = time.time()
+        while not math.isnan(end_index):
+            df4 = df3[(df3['frame.number'] >= start_index) & (df3['frame.number'] < end_index)]
+            #print(df4)
+            all_users_segments[idx].append(df4)
+            corpus.append(' '.join(df4['dns.qry.name'].values))
+            start_index = end_index
+            end_index = find_segment_end(df3, start_index)
+        # last segment
+        end_time = time.time()
+        print('loop took ' + str(end_time - start_time) + ' s')
+        df4 = df3[(df3['frame.number'] >= start_index) & (df3['frame.number'] <= max_index)]
+        all_users_segments[idx].append(df4)
+        corpus.append(' '.join(df4['dns.qry.name'].values))
+        print('user #' + str(idx) + ': ' + str(len(all_users_segments[idx])) + ' records')
 
+print('Total segments in corpus: ' + str(len(corpus)))
+
+# #############################################################################
+# Get features in bag of words representation
+
+# Count occurrences (array of frequencies)
 vectorizer = CountVectorizer(token_pattern="(?u)\\b[\\w.-]+\\b")
 X = vectorizer.fit_transform(corpus)
 
-# collect summed frequencies for ALL users together
-frequencies = np.asarray(X.sum(axis=0)).ravel().tolist()
-frequencies_df = pd.DataFrame({'term': vectorizer.get_feature_names(), 'frequency': frequencies})
-frequencies_df.sort_values(by='frequency', ascending=False).head(20)
-
+# TF-IDF transformer
 print(str(len(vectorizer.get_feature_names())) + ' features (different domain names)')
 transformer = TfidfTransformer(smooth_idf=False)
-transformed_weights = transformer.fit_transform(X.toarray())
-len(transformed_weights.toarray())
+X_TFIDF = transformer.fit_transform(X.toarray())
 
-# collect averaged weights for ALL users together
-weights = np.asarray(transformed_weights.mean(axis=0)).ravel().tolist()
-weights_df = pd.DataFrame({'term': vectorizer.get_feature_names(), 'weight': weights})
-weights_df.sort_values(by='weight', ascending=False).head(20)
-len(weights_df)
+# #############################################################################
+# For each user, train classifiers
 
-# create tf-idf features for each user
-users_data = {}
-for feature_name in vectorizer.get_feature_names():
-    users_data[feature_name] = []
-for user_index, file in enumerate(os.listdir('.\\' + DATA_DIR)):
-    print(file)
-    for feature_index, feature_name in enumerate(vectorizer.get_feature_names()):
-        users_data[feature_name].append(transformed_weights[user_index, feature_index])
-users_df = pd.DataFrame(data=users_data)
-processed_path = os.path.join(PROCESSED_DIR, 'users.csv')
-users_df.to_csv(path_or_buf=processed_path)
+accuracy_score_totals = []
+auc_totals = []
+training_time_totals = []
+test_time_totals = []
+for cur_user in range(NUM_OF_USERS):
+    print('Training classifiers for user ' + str(cur_user))
+    start_seg_idx = 0
+    for i in range(cur_user):
+        start_seg_idx = start_seg_idx + len(all_users_segments[i])
+    end_seg_idx = start_seg_idx + len(all_users_segments[cur_user]) - 1
+    print('User segments are ' + str(start_seg_idx) + ' to ' + str(end_seg_idx))
+    
+    # Set target according to user segments - 1 for a segment of the user, -1 otherwise
+    user_target = np.empty(len(corpus))
+    user_target.fill(-1)
+    user_target[range(start_seg_idx,end_seg_idx+1)] = 1
+    
+    # Do undersampling as data is imbalanced (1 against 14)
+    rus = RandomUnderSampler(random_state=0)
+    X_resampled, y_resampled = rus.fit_sample(X_TFIDF, user_target)
+    
+    # Split corpus to X_train, X_test, and Y_train, Y_test
+    # Todo: use k-fold cross validation instead, as in:
+    # http://scikit-learn.org/stable/modules/cross_validation.html
+    X_train, X_test, y_train, y_test = train_test_split(X_resampled, y_resampled, test_size=0.4)
+
+    results = []
+ 
+    print('=' * 80)
+    print("kNN")
+    clf1 = KNeighborsClassifier(n_neighbors=10)
+    results.append(benchmark(clf1))
+    
+    print('=' * 80)
+    print("Random forest")
+    clf2 = RandomForestClassifier(n_estimators=100)
+    results.append(benchmark(clf2))
+    
+    # Train sparse Naive Bayes classifiers
+    print('=' * 80)
+    print("Naive Bayes")
+    clf3 = MultinomialNB(alpha=.01)
+    results.append(benchmark(clf3))
+    clf4 = BernoulliNB(alpha=.01)
+    results.append(benchmark(clf4))
+    
+    print('=' * 80)
+    print("Voting ensemble")
+    eclf = VotingClassifier(estimators=[('knn', clf1), ('rf', clf2), ('mnb', clf3), ('bnb', clf4)], voting='soft')
+    results.append(benchmark(eclf))
 
 
+    # make some plots
+    
+    indices = np.arange(len(results))
+    
+    results = [[x[i] for x in results] for i in range(7)]
+    
+    clf_names, score, auc, training_time, test_time, fpr, tpr = results
+    training_time_norm = np.array(training_time) / np.max(training_time)
+    test_time_norm = np.array(test_time) / np.max(test_time)
+    
+    accuracy_score_totals.append(score)
+    auc_totals.append(auc)
+    training_time_totals.append(training_time_norm)
+    test_time_totals.append(test_time_norm)
+    
+    # Plot all ROC curves
+    plt.figure()
+    lw = 2
+    colors = itertools.cycle(['deeppink', 'navy', 'aqua', 'darkorange', 'cornflowerblue'])
+    for i, color in zip(range(5), colors):
+        plt.plot(fpr[i], tpr[i], color=color, lw=lw,
+                 label='{0} (area = {1:0.3f})'
+                 ''.format(clf_names[i], auc[i]))
+    plt.plot([0, 1], [0, 1], 'k--', lw=lw)
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('Receiver operating characteristic of user {0}'.format(cur_user))
+    plt.legend(loc="lower right")
+    # plt.show()
+    plt.savefig('.//Results//ROC' + str(cur_user) + '.png')
+
+
+def calc_avgs(totals):
+    totals_arr = [0, 0, 0, 0, 0]
+    for i in range(len(totals)):
+        for j in range(5):
+            totals_arr[j] += totals[i][j]
+    for j in range(5):
+        totals_arr[j] = totals_arr[j] / len(totals)
+    return totals_arr
+
+accuracy_score_avgs =  calc_avgs(accuracy_score_totals)
+auc_avgs = calc_avgs(auc_totals)
+training_time_avgs = calc_avgs(training_time_totals)
+test_time_avgs = calc_avgs(test_time_totals)
+
+# Plot extra data as bars
+fig, ax = plt.subplots(figsize=(12, 8)) 
+# plt.title("Score")
+ax.barh(indices, accuracy_score_avgs, .2, label="Accuracy", color='navy')
+ax.barh(indices + .2, auc_avgs, .2, label="AUC", color='deeppink')
+ax.barh(indices + .4, training_time_avgs, .2, label="Training time", color='c')
+ax.barh(indices + .6, test_time_avgs, .2, label="Test time", color='darkorange')
+ax.set_yticks(indices + 0.3)
+ax.set_yticklabels(clf_names, minor=False)
+for i, v in enumerate(score):
+    ax.text(v + 0.01, i, '{0:0.3f}'.format(v), color='black', fontweight='bold')
+for i, v in enumerate(auc):
+    ax.text(v + 0.01, i + .2, '{0:0.3f}'.format(v), color='black', fontweight='bold')
+for i, v in enumerate(training_time):
+    ax.text(training_time_norm[i] + 0.01, i + .4, '{0:0.3f} sec'.format(v), color='black', fontweight='bold')
+for i, v in enumerate(test_time):
+    ax.text(test_time_norm[i] + 0.01, i + .6, '{0:0.3f} sec'.format(v), color='black', fontweight='bold')
+plt.legend(loc='lower left')
+x0, x1, y0, y1 = plt.axis()
+plt.axis((x0, x1 + 0.06, y0, y1))
+
+# plt.show()
+plt.savefig('.//Results//averages.png')
+#############################################################################
